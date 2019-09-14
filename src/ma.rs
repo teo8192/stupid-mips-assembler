@@ -391,10 +391,13 @@ pub fn assemble_file(filename: String) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(filename)?;
     let lexemes = lexer(source);
     let symbol_table = build_symbol_table(lexemes.clone());
+    let mut line_nr = 0;
     for line in lexemes {
         let tokens = tokenize_line(&line, &symbol_table);
         if let Some(token) = tokens {
-            println!("0x{:08x}", asseble_token(token));
+            let instruction: u32 = asseble_token(token);
+            println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
+            line_nr += 4;
         }
     }
 
