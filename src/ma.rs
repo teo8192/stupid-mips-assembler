@@ -173,200 +173,176 @@ enum Token {
     J(u8, u32),
 }
 
-fn tokenize_line(line: &Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Option<Token> {
-    if line.len() == 0 {
-        None
-    } else {
-        match &line[0] {
-            Lexeme::R(ins) => {
-                if line.len() == 6 {
-                    let rd = if let Lexeme::Register(val) = &line[1] {
-                        *val
+fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Option<(u8, u32)> {
+    match line.pop() {
+        Some(Lexeme::Number(num)) => {
+            match line.pop() {
+                Some(Lexeme::OpenParen) => {
+                    if let Some(Lexeme::Register(reg)) = line.pop() {
+                        match line.pop() {
+                            Some(Lexeme::CloseParen) => Some((reg, num)),
+                            _ => {
+                                println!("Expected close parenthesis");
+                                None
+                            }
+                        }
                     } else {
-                        0
-                    };
-                    let rs = if let Lexeme::Register(val) = &line[3] {
-                        *val
-                    } else {
-                        0
-                    };
-
-                    let rt = if let Lexeme::Register(val) = &line[5] {
-                        *val
-                    } else {
-                        0
-                    };
-
-                    Some(Token::R(0, rs, rt, rd, 0, get_funct(ins)))
-                } else {
-                    println!(
-                        "Tried to decode {:?}, but did not find expected number of symbols",
-                        line
-                    );
+                        println!("Expected register");
+                        None
+                    }
+                },
+                None => {
+                    Some((0, num))
+                },
+                _ => {
+                    println!("expected open parenthesis after number for adress mode");
                     None
+                },
+            }
+        },
+        Some(Lexeme::OpenParen) => {
+            if let Some(Lexeme::Register(reg)) = line.pop() {
+                match line.pop() {
+                    Some(Lexeme::CloseParen) => Some((reg, 0)),
+                    _ => {
+                        println!("Expected close parenthesis");
+                        None
+                    }
                 }
+            } else {
+                println!("Expected register");
+                None
             }
-            Lexeme::I(ins) => {
-                use Ins::*;
-                let (s, t, i) = match ins {
-                    Beq | Bne => {
-                        if line.len() != 6 {
-                            println!("wrong number of lexemes for {:?}", ins);
-                            (0, 0, 0)
-                        } else {
-                            let s = if let Lexeme::Register(reg) = line[1] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[1]);
-                                0
-                            };
-                            let t = if let Lexeme::Register(reg) = line[3] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[3]);
-                                0
-                            };
-                            let u = if let Lexeme::Label(label) = &line[5] {
-                                if let Some(addr) = symbol_table.get(label) {
-                                    addr.clone()
-                                } else {
-                                    println!("Could not find label {:?} in symbol table", label);
-                                    0
-                                }
-                            } else {
-                                println!("expected label, got {:?}", line[5]);
-                                0
-                            };
-                            (s, t, u)
-                        }
-                    }
-                    Addi | Addiu => {
-                        if line.len() != 6 {
-                            println!("wrong number of lexemes for {:?}", ins);
-                            (0, 0, 0)
-                        } else {
-                            let t = if let Lexeme::Register(reg) = line[1] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[1]);
-                                0
-                            };
-                            let s = if let Lexeme::Register(reg) = line[3] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[3]);
-                                0
-                            };
-                            let i = if let Lexeme::Number(number) = line[5] {
-                                number
-                            } else {
-                                println!("expected number, got {:?}", line[5]);
-                                0
-                            };
-                            (s, t, i)
-                        }
-                    }
-                    Lw | Sw => {
-                        if line.len() == 7 {
-                            let t = if let Lexeme::Register(reg) = line[1] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[1]);
-                                0
-                            };
-                            let s = if let Lexeme::Register(reg) = line[5] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[5]);
-                                0
-                            };
-                            let i = if let Lexeme::Number(number) = line[3] {
-                                number
-                            } else {
-                                println!("expected number, got {:?}", line[3]);
-                                0
-                            };
-                            (s, t, i)
-                        } else if line.len() == 4 {
-                            let t = if let Lexeme::Register(reg) = line[1] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[1]);
-                                0
-                            };
-                            let s = if let Lexeme::Register(reg) = line[3] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[3]);
-                                0
-                            };
-                            (s, t, 0)
-                        } else {
-                            println!("wrong number of lexemes for {:?}", ins);
-                            (0, 0, 0)
-                        }
-                    }
-                    Lui => {
-                        if line.len() != 4 {
-                            println!("wrong number of lexemes for {:?}", ins);
-                            (0, 0, 0)
-                        } else {
-                            let t = if let Lexeme::Register(reg) = line[1] {
-                                reg
-                            } else {
-                                println!("expected register, got {:?}", line[1]);
-                                0
-                            };
-                            let i = if let Lexeme::Number(number) = line[3] {
-                                number
-                            } else {
-                                println!("expected number, got {:?}", line[4]);
-                                0
-                            };
-                            (0, t, i)
-                        }
-                    }
-                    instr => {
-                        println!("Unexpected instruction {:?}", instr);
-                        (0, 0, 0)
-                    }
-                };
-
-                Some(Token::I(get_opcode(ins), s, t, i))
+        },
+        Some(Lexeme::Label(label)) => {
+            if let Some(addr) = symbol_table.get(&label) {
+                Some((0, addr.clone()))
+            } else {
+                println!("Did not find label in symbol table");
+                None
             }
-            Lexeme::J(Ins::J) => {
-                if line.len() != 2 {
-                    println!("wrong number of lexemes for jmp");
-                    None
-                } else {
-                    let addr = if let Lexeme::Label(label) = &line[1] {
-                        if let Some(addr) = symbol_table.get(label) {
-                            addr.clone()
-                        } else {
-                            println!("Could not find label {:?} in symbol table", label);
-                            0
-                        }
-                    } else {
-                        println!("Expected addr/label, got {:?}", line[1]);
-                        0
-                    };
-
-                    Some(Token::J(get_opcode(&Ins::J), addr))
-                }
-            }
-            Lexeme::J(Ins::Break) => {
-                if line.len() != 2 {
-                    println!(
-                        "wrong number of lexemes for break, expected 1, got {}",
-                        line.len()
-                    );
-                    None
-                } else {
-                    Some(Token::J(get_opcode(&Ins::Break), 0xd))
-                }
-            }
-            _ => None,
+        },
+        lexeme => {
+            println!("Got {:?} when an adress was expected", lexeme);
+            None
         }
+    }
+}
+
+fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Option<Token> {
+    match line.pop() {
+        Some(Lexeme::R(ins)) => {
+            let rd = if let Some(Lexeme::Register(val)) = line.pop() {
+                val
+            } else {
+                return None;
+            };
+            line.pop();
+            let rs = if let Some(Lexeme::Register(val)) = line.pop() {
+                val
+            } else {
+                return None;
+            };
+            line.pop();
+            let rt = if let Some(Lexeme::Register(val)) = line.pop() {
+                val
+            } else {
+                return None;
+            };
+            line.pop();
+
+            Some(Token::R(0, rs, rt, rd, 0, get_funct(&ins)))
+        },
+        Some(Lexeme::I(ins)) => {
+            use Ins::*;
+            match ins {
+                Beq | Bne | Addi | Addiu => {
+                    let s = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    //let o = if let Some(Lexeme::Register(val)) = line.pop() {
+                        //val
+                    //} else {
+                        //return None;
+                    //};
+                    //line.pop();
+                    if let Some((r, o)) = parse_addr(line, symbol_table) {
+                        if r == 0 {
+                            Some(Token::I(get_opcode(&ins), s, t, o))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                },
+                Lw | Sw => {
+                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    if let Some((s, o)) = parse_addr(line, symbol_table) {
+                            Some(Token::I(get_opcode(&ins), s, t, o))
+                    } else {
+                        None
+                    }
+                }
+                Lui => {
+                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    if let Some((r, i)) = parse_addr(line, symbol_table) {
+                        if r == 0 {
+                            Some(Token::I(get_opcode(&ins), 0, t, i))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        },
+        Some(Lexeme::J(Ins::J)) => {
+            if let Some((r, addr)) = parse_addr(line, symbol_table) {
+                if r == 0 {
+                    Some(Token::J(get_opcode(&Ins::J), addr))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
+        Some(Lexeme::J(Ins::Break)) => {
+            if line.len() != 0 {
+                println!(
+                    "wrong number of lexemes for break, expected 1, got {}",
+                    line.len()
+                );
+                None
+            } else {
+                Some(Token::J(get_opcode(&Ins::Break), 0xd))
+            }
+        }
+        _lexeme => {
+            None
+        },
     }
 }
 
@@ -387,13 +363,26 @@ fn asseble_token(instr: Token) -> u32 {
     }
 }
 
+fn reverse<T>(mut input: Vec<T>) -> Vec<T> {
+    let mut reversed: Vec<T> = Vec::new();
+    let size = input.len();
+
+    for _ in 0..size {
+        if let Some(val) = input.pop() {
+            reversed.push(val);
+        }
+    }
+
+    reversed
+}
+
 pub fn assemble_file(filename: String) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(filename)?;
     let lexemes = lexer(source);
     let symbol_table = build_symbol_table(lexemes.clone());
     let mut line_nr = 0;
     for line in lexemes {
-        let tokens = tokenize_line(&line, &symbol_table);
+        let tokens = tokenize_line(&mut reverse(line), &symbol_table);
         if let Some(token) = tokens {
             let instruction: u32 = asseble_token(token);
             println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
