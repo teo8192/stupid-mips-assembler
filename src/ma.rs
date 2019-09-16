@@ -78,15 +78,15 @@ enum Lexeme {
 fn build_symbol_table(source: Vec<Vec<Lexeme>>) -> HashMap<String, u32> {
     let mut symbol_table = HashMap::new();
     let mut addr: u32 = 0;
-    for line in source {
-        if let Lexeme::Label(label) = &line[0] {
-            symbol_table.insert(label.clone(), addr);
-        } else {
-            addr += match line[0] {
-                Lexeme::R(_) | Lexeme::I(_) | Lexeme::J(_) => 4,
-                _ => 0,
-            };
-        }
+    for mut line in source {
+        addr += match line.pop() {
+            Some(Lexeme::Label(label)) => {
+                symbol_table.insert(label.clone(), addr);
+                0
+            },
+            Some(Lexeme::R(_)) | Some(Lexeme::I(_)) | Some(Lexeme::J(_)) => 4,
+            _ => 0,
+        };
     }
     symbol_table
 }
@@ -95,7 +95,8 @@ fn lexer(source: String) -> Vec<Vec<Lexeme>> {
     let mut lexemes: Vec<Vec<Lexeme>> = Vec::new();
     for line in source.lines() {
         lexemes.push(
-            Regex::new(r"([$a-z0-9]+)|,|\(|\)|:")
+            reverse(
+            Regex::new(r"(-?[$a-z0-9]+)|,|\(|\)|:")
                 .unwrap()
                 .find_iter(&line)
                 .map(|expr| {
@@ -107,21 +108,21 @@ fn lexer(source: String) -> Vec<Vec<Lexeme>> {
                             "(" => Lexeme::OpenParen,
                             ")" => Lexeme::CloseParen,
                             ":" => Lexeme::Colon,
-                            "and" => Lexeme::R(Ins::And),
-                            "sub" => Lexeme::R(Ins::Sub),
-                            "nor" => Lexeme::R(Ins::Nor),
-                            "slt" => Lexeme::R(Ins::Slt),
                             "add" => Lexeme::R(Ins::Add),
-                            "or" => Lexeme::R(Ins::Or),
                             "addu" => Lexeme::R(Ins::Addu),
+                            "sub" => Lexeme::R(Ins::Sub),
                             "subu" => Lexeme::R(Ins::Subu),
-                            "beq" => Lexeme::I(Ins::Beq),
-                            "sw" => Lexeme::I(Ins::Sw),
-                            "bne" => Lexeme::I(Ins::Bne),
-                            "lui" => Lexeme::I(Ins::Lui),
-                            "lw" => Lexeme::I(Ins::Lw),
+                            "nor" => Lexeme::R(Ins::Nor),
+                            "or" => Lexeme::R(Ins::Or),
+                            "and" => Lexeme::R(Ins::And),
+                            "slt" => Lexeme::R(Ins::Slt),
                             "addi" => Lexeme::I(Ins::Addi),
                             "addiu" => Lexeme::I(Ins::Addiu),
+                            "beq" => Lexeme::I(Ins::Beq),
+                            "bne" => Lexeme::I(Ins::Bne),
+                            "sw" => Lexeme::I(Ins::Sw),
+                            "lw" => Lexeme::I(Ins::Lw),
+                            "lui" => Lexeme::I(Ins::Lui),
                             "break" => Lexeme::J(Ins::Break),
                             "j" => Lexeme::J(Ins::J),
                             "$zero" => Lexeme::Register(0),
@@ -161,9 +162,9 @@ fn lexer(source: String) -> Vec<Vec<Lexeme>> {
                     }
                 })
                 .collect(),
-        );
+        ));
     }
-    lexemes
+    lexemes.into_iter().filter(|lexemes| {lexemes.len() > 0}).collect()
 }
 
 #[derive(Debug)]
@@ -365,17 +366,25 @@ fn reverse<T>(mut input: Vec<T>) -> Vec<T> {
 }
 
 pub fn assemble_file(filename: String) -> Result<(), Box<dyn Error>> {
-    let source = fs::read_to_string(filename)?;
-    let lexemes = lexer(source);
+    let lexemes = lexer(fs::read_to_string(filename)?);
     let symbol_table = build_symbol_table(lexemes.clone());
-    let mut line_nr = 0;
-    for line in lexemes {
-        let tokens = tokenize_line(&mut reverse(line), &symbol_table);
+    let instructions: Vec<Option<u32>> = lexemes.into_iter().map(|mut line| -> Option<u32> {
+        let tokens = tokenize_line(&mut line, &symbol_table);
         if let Some(token) = tokens {
-            let instruction: u32 = asseble_token(token);
-            println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
-            line_nr += 4;
+            Some(asseble_token(token))
+        } else {
+            None
         }
+    }).collect();
+    let mut line_nr = 0;
+    for instruction in instructions.into_iter() {
+        line_nr += match instruction {
+            Some(instruction) => {
+                println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
+                4
+            },
+            None => 0,
+        };
     }
 
     Ok(())
