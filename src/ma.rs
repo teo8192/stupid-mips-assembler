@@ -124,38 +124,38 @@ fn lexer(source: String) -> Vec<Vec<Lexeme>> {
                             "addiu" => Lexeme::I(Ins::Addiu),
                             "break" => Lexeme::J(Ins::Break),
                             "j" => Lexeme::J(Ins::J),
-                            "zero" => Lexeme::Register(0),
-                            "at" => Lexeme::Register(1),
-                            "v0" => Lexeme::Register(2),
-                            "v1" => Lexeme::Register(3),
-                            "a0" => Lexeme::Register(4),
-                            "a1" => Lexeme::Register(5),
-                            "a2" => Lexeme::Register(6),
-                            "a3" => Lexeme::Register(7),
-                            "t0" => Lexeme::Register(8),
-                            "t1" => Lexeme::Register(9),
-                            "t2" => Lexeme::Register(10),
-                            "t3" => Lexeme::Register(11),
-                            "t4" => Lexeme::Register(12),
-                            "t5" => Lexeme::Register(13),
-                            "t6" => Lexeme::Register(14),
-                            "t7" => Lexeme::Register(15),
-                            "s0" => Lexeme::Register(16),
-                            "s1" => Lexeme::Register(17),
-                            "s2" => Lexeme::Register(18),
-                            "s3" => Lexeme::Register(19),
-                            "s4" => Lexeme::Register(20),
-                            "s5" => Lexeme::Register(21),
-                            "s6" => Lexeme::Register(22),
-                            "s7" => Lexeme::Register(23),
-                            "t8" => Lexeme::Register(24),
-                            "t9" => Lexeme::Register(25),
-                            "k0" => Lexeme::Register(26),
-                            "k1" => Lexeme::Register(27),
-                            "gp" => Lexeme::Register(28),
-                            "sp" => Lexeme::Register(29),
-                            "fp" => Lexeme::Register(30),
-                            "ra" => Lexeme::Register(31),
+                            "$zero" => Lexeme::Register(0),
+                            "$at" => Lexeme::Register(1),
+                            "$v0" => Lexeme::Register(2),
+                            "$v1" => Lexeme::Register(3),
+                            "$a0" => Lexeme::Register(4),
+                            "$a1" => Lexeme::Register(5),
+                            "$a2" => Lexeme::Register(6),
+                            "$a3" => Lexeme::Register(7),
+                            "$t0" => Lexeme::Register(8),
+                            "$t1" => Lexeme::Register(9),
+                            "$t2" => Lexeme::Register(10),
+                            "$t3" => Lexeme::Register(11),
+                            "$t4" => Lexeme::Register(12),
+                            "$t5" => Lexeme::Register(13),
+                            "$t6" => Lexeme::Register(14),
+                            "$t7" => Lexeme::Register(15),
+                            "$s0" => Lexeme::Register(16),
+                            "$s1" => Lexeme::Register(17),
+                            "$s2" => Lexeme::Register(18),
+                            "$s3" => Lexeme::Register(19),
+                            "$s4" => Lexeme::Register(20),
+                            "$s5" => Lexeme::Register(21),
+                            "$s6" => Lexeme::Register(22),
+                            "$s7" => Lexeme::Register(23),
+                            "$t8" => Lexeme::Register(24),
+                            "$t9" => Lexeme::Register(25),
+                            "$k0" => Lexeme::Register(26),
+                            "$k1" => Lexeme::Register(27),
+                            "$gp" => Lexeme::Register(28),
+                            "$sp" => Lexeme::Register(29),
+                            "$fp" => Lexeme::Register(30),
+                            "$ra" => Lexeme::Register(31),
                             label => Lexeme::Label(label.to_string()),
                         }
                     }
@@ -175,29 +175,25 @@ enum Token {
 
 fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Option<(u8, u32)> {
     match line.pop() {
-        Some(Lexeme::Number(num)) => {
-            match line.pop() {
-                Some(Lexeme::OpenParen) => {
-                    if let Some(Lexeme::Register(reg)) = line.pop() {
-                        match line.pop() {
-                            Some(Lexeme::CloseParen) => Some((reg, num)),
-                            _ => {
-                                println!("Expected close parenthesis");
-                                None
-                            }
+        Some(Lexeme::Number(num)) => match line.pop() {
+            Some(Lexeme::OpenParen) => {
+                if let Some(Lexeme::Register(reg)) = line.pop() {
+                    match line.pop() {
+                        Some(Lexeme::CloseParen) => Some((reg, num)),
+                        _ => {
+                            println!("Expected close parenthesis");
+                            None
                         }
-                    } else {
-                        println!("Expected register");
-                        None
                     }
-                },
-                None => {
-                    Some((0, num))
-                },
-                _ => {
-                    println!("expected open parenthesis after number for adress mode");
+                } else {
+                    println!("Expected register");
                     None
-                },
+                }
+            }
+            None => Some((0, num)),
+            _ => {
+                println!("expected open parenthesis after number for adress mode");
+                None
             }
         },
         Some(Lexeme::OpenParen) => {
@@ -213,7 +209,7 @@ fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Op
                 println!("Expected register");
                 None
             }
-        },
+        }
         Some(Lexeme::Label(label)) => {
             if let Some(addr) = symbol_table.get(&label) {
                 Some((0, addr.clone()))
@@ -221,7 +217,7 @@ fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Op
                 println!("Did not find label in symbol table");
                 None
             }
-        },
+        }
         lexeme => {
             println!("Got {:?} when an adress was expected", lexeme);
             None
@@ -252,7 +248,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
             line.pop();
 
             Some(Token::R(0, rs, rt, rd, 0, get_funct(&ins)))
-        },
+        }
         Some(Lexeme::I(ins)) => {
             use Ins::*;
             match ins {
@@ -269,12 +265,6 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
                         return None;
                     };
                     line.pop();
-                    //let o = if let Some(Lexeme::Register(val)) = line.pop() {
-                        //val
-                    //} else {
-                        //return None;
-                    //};
-                    //line.pop();
                     if let Some((r, o)) = parse_addr(line, symbol_table) {
                         if r == 0 {
                             Some(Token::I(get_opcode(&ins), s, t, o))
@@ -284,7 +274,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
                     } else {
                         None
                     }
-                },
+                }
                 Lw | Sw => {
                     let t = if let Some(Lexeme::Register(val)) = line.pop() {
                         val
@@ -293,7 +283,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
                     };
                     line.pop();
                     if let Some((s, o)) = parse_addr(line, symbol_table) {
-                            Some(Token::I(get_opcode(&ins), s, t, o))
+                        Some(Token::I(get_opcode(&ins), s, t, o))
                     } else {
                         None
                     }
@@ -317,7 +307,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
                 }
                 _ => None,
             }
-        },
+        }
         Some(Lexeme::J(Ins::J)) => {
             if let Some((r, addr)) = parse_addr(line, symbol_table) {
                 if r == 0 {
@@ -328,7 +318,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
             } else {
                 None
             }
-        },
+        }
         Some(Lexeme::J(Ins::Break)) => {
             if line.len() != 0 {
                 println!(
@@ -340,9 +330,7 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
                 Some(Token::J(get_opcode(&Ins::Break), 0xd))
             }
         }
-        _lexeme => {
-            None
-        },
+        _lexeme => None,
     }
 }
 
