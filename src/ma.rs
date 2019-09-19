@@ -75,15 +75,15 @@ enum Lexeme {
     Colon,
 }
 
-fn build_symbol_table(source: Vec<Vec<Lexeme>>) -> HashMap<String, u32> {
+fn build_symbol_table(source: Vec<Vec<Lexeme>>, start: u32) -> HashMap<String, u32> {
     let mut symbol_table = HashMap::new();
-    let mut addr: u32 = 0;
+    let mut addr: u32 = start;
     for mut line in source {
         addr += match line.pop() {
             Some(Lexeme::Label(label)) => {
-                symbol_table.insert(label.clone(), addr);
+                symbol_table.insert(label.clone(), addr >> 2);
                 0
-            },
+            }
             Some(Lexeme::R(_)) | Some(Lexeme::I(_)) | Some(Lexeme::J(_)) => 4,
             _ => 0,
         };
@@ -94,8 +94,7 @@ fn build_symbol_table(source: Vec<Vec<Lexeme>>) -> HashMap<String, u32> {
 fn lexer(source: String) -> Vec<Vec<Lexeme>> {
     let mut lexemes: Vec<Vec<Lexeme>> = Vec::new();
     for line in source.lines() {
-        lexemes.push(
-            reverse(
+        lexemes.push(reverse(
             Regex::new(r"(-?[$a-z0-9]+)|,|\(|\)|:")
                 .unwrap()
                 .find_iter(&line)
@@ -164,7 +163,10 @@ fn lexer(source: String) -> Vec<Vec<Lexeme>> {
                 .collect(),
         ));
     }
-    lexemes.into_iter().filter(|lexemes| {lexemes.len() > 0}).collect()
+    lexemes
+        .into_iter()
+        .filter(|lexemes| lexemes.len() > 0)
+        .collect()
 }
 
 #[derive(Debug)]
@@ -226,7 +228,13 @@ fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Op
     }
 }
 
-fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Option<Token> {
+fn get_relative_addr(line_nr: u32, addr: u32, bits: u32) -> u32 {
+    let line_nr = ((line_nr ^ 0xffffffff)) + addr;
+    
+    line_nr & ((1 << bits) - 1)
+}
+
+fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>, line_nr: u32) -> Option<Token> {
     match line.pop() {
         Some(Lexeme::R(ins)) => {
             let rd = if let Some(Lexeme::Register(val)) = line.pop() {
@@ -253,7 +261,30 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) ->
         Some(Lexeme::I(ins)) => {
             use Ins::*;
             match ins {
-                Beq | Bne | Addi | Addiu => {
+                Beq | Bne => {
+                    let s = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
+                        val
+                    } else {
+                        return None;
+                    };
+                    line.pop();
+                    if let Some((r, o)) = parse_addr(line, symbol_table) {
+                        if r == 0 {
+                            Some(Token::I(get_opcode(&ins), s, t, get_relative_addr(line_nr, o, 16)))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Addi | Addiu => {
                     let s = if let Some(Lexeme::Register(val)) = line.pop() {
                         val
                     } else {
@@ -348,7 +379,7 @@ fn asseble_token(instr: Token) -> u32 {
         Token::I(opcode, rs, rt, immidiate) => {
             ((opcode as u32) << 26) | ((rs as u32) << 21) | ((rt as u32) << 16) | immidiate
         }
-        Token::J(opcode, addr) => ((opcode as u32) << 26) | addr,
+        Token::J(opcode, addr) => ((opcode as u32) << 26) | (addr & ((1 << 26) - 1)),
     }
 }
 
@@ -365,26 +396,41 @@ fn reverse<T>(mut input: Vec<T>) -> Vec<T> {
     reversed
 }
 
-pub fn assemble_file(filename: String) -> Result<(), Box<dyn Error>> {
-    let lexemes = lexer(fs::read_to_string(filename)?);
-    let symbol_table = build_symbol_table(lexemes.clone());
-    let instructions: Vec<Option<u32>> = lexemes.into_iter().map(|mut line| -> Option<u32> {
-        let tokens = tokenize_line(&mut line, &symbol_table);
-        if let Some(token) = tokens {
-            Some(asseble_token(token))
-        } else {
-            None
+fn tokenize(
+    lexemes: &mut Vec<Vec<Lexeme>>,
+    symbol_table: &HashMap<String, u32>,
+    start: u32,
+) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut line_nr = start >> 2;
+
+    for line in lexemes {
+        if let Some(token) = tokenize_line(line, symbol_table, line_nr) {
+            tokens.push(token);
+            line_nr += 1;
         }
-    }).collect();
-    let mut line_nr = 0;
+    }
+
+    tokens
+}
+
+fn asseble(tokens: Vec<Token>) -> Vec<u32> {
+    tokens
+        .into_iter()
+        .map(|token| asseble_token(token))
+        .collect()
+}
+
+pub fn assemble_file(filename: String) -> Result<(), Box<dyn Error>> {
+    let start: u32 = 0xbfc00000;
+    let mut lexemes = lexer(fs::read_to_string(filename)?);
+    let symbol_table = build_symbol_table(lexemes.clone(), start);
+    let tokens = tokenize(&mut lexemes, &symbol_table, start);
+    let instructions = asseble(tokens);
+    let mut line_nr = start;
     for instruction in instructions.into_iter() {
-        line_nr += match instruction {
-            Some(instruction) => {
-                println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
-                4
-            },
-            None => 0,
-        };
+        println!("0x{:08x}\t0x{:08x}", line_nr, instruction);
+        line_nr += 4;
     }
 
     Ok(())
