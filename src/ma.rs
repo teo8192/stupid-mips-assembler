@@ -229,12 +229,16 @@ fn parse_addr(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>) -> Op
 }
 
 fn get_relative_addr(line_nr: u32, addr: u32, bits: u32) -> u32 {
-    let line_nr = ((line_nr ^ 0xffffffff)) + addr;
-    
+    let line_nr = (line_nr ^ 0xffffffff) + addr;
+
     line_nr & ((1 << bits) - 1)
 }
 
-fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>, line_nr: u32) -> Option<Token> {
+fn tokenize_line(
+    line: &mut Vec<Lexeme>,
+    symbol_table: &HashMap<String, u32>,
+    line_nr: u32,
+) -> Option<Token> {
     match line.pop() {
         Some(Lexeme::R(ins)) => {
             let rd = if let Some(Lexeme::Register(val)) = line.pop() {
@@ -276,7 +280,12 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>, li
                     line.pop();
                     if let Some((r, o)) = parse_addr(line, symbol_table) {
                         if r == 0 {
-                            Some(Token::I(get_opcode(&ins), s, t, get_relative_addr(line_nr, o, 16)))
+                            Some(Token::I(
+                                get_opcode(&ins),
+                                s,
+                                t,
+                                get_relative_addr(line_nr, o, 16),
+                            ))
                         } else {
                             None
                         }
@@ -285,13 +294,13 @@ fn tokenize_line(line: &mut Vec<Lexeme>, symbol_table: &HashMap<String, u32>, li
                     }
                 }
                 Addi | Addiu => {
-                    let s = if let Some(Lexeme::Register(val)) = line.pop() {
+                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
                         val
                     } else {
                         return None;
                     };
                     line.pop();
-                    let t = if let Some(Lexeme::Register(val)) = line.pop() {
+                    let s = if let Some(Lexeme::Register(val)) = line.pop() {
                         val
                     } else {
                         return None;
