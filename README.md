@@ -1,4 +1,4 @@
-# Stupid MIPS assebler
+# Stupid MIPS assembler
 
 This is a stupid MIPS assembler that does not wort really well
 
